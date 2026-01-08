@@ -1,11 +1,15 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserDocument } from './schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { EmailService } from '../../shared/email/email.service';
-import { UpdateAgentProfileDto } from './dto/update-agent-profile.dto';
+import { UploadsService } from '../../shared/uploads/uploads.service';
+import { OnboardingStep1Dto } from './dto/onboarding/step1-personal.dto';
+import { OnboardingStep2Dto } from './dto/onboarding/step2-type.dto';
+import { OnboardingStep3Dto } from './dto/onboarding/step3-location.dto';
+import { OnboardingStep4Dto } from './dto/onboarding/step4-payouts.dto';
 
 @Injectable()
 export class UsersService {
@@ -14,6 +18,7 @@ export class UsersService {
     constructor(
         @InjectModel(User.name) private userModel: Model<UserDocument>,
         private readonly emailService: EmailService,
+        private readonly uploadsService: UploadsService // Inject UploadsService
     ) { }
 
     // --- Basic CRUD ---
@@ -64,45 +69,85 @@ export class UsersService {
         return user;
     }
 
-    // --- Agent Onboarding ---
+    // --- Agent Onboarding (6 Steps) ---
 
-    async updateAgentProfile(userId: string, data: UpdateAgentProfileDto): Promise<User> {
-        // Construct dot-notation update object for partial updates of nested fields
-        const update: Record<string, any> = {};
-
-        if (data.type) update['agentProfile.type'] = data.type;
-        if (data.operatingArea) update['agentProfile.operatingArea'] = data.operatingArea;
-        if (data.bankDetails) update['agentProfile.bankDetails'] = data.bankDetails;
-
+    // Step 1: Personal Info
+    async updateOnboardingStep1(userId: string, data: OnboardingStep1Dto): Promise<User> {
         const user = await this.userModel.findByIdAndUpdate(
             userId,
-            { $set: update },
+            {
+                firstName: data.firstName,
+                lastName: data.lastName,
+                phoneNumber: data.phoneNumber
+            },
             { new: true }
         ).exec();
 
-        if (!user) {
-            throw new NotFoundException(`User with ID ${userId} not found`);
-        }
+        if (!user) throw new NotFoundException(`User ${userId} not found`);
         return user;
     }
 
-    async upgradeToAgent(userId: string): Promise<User> {
-        const user = await this.userModel.findByIdAndUpdate(
-            userId,
-            { role: UserRole.AGENT },
-            { new: true }
-        ).exec();
+    // Step 2: Agent Type
+    async updateOnboardingStep2(userId: string, data: OnboardingStep2Dto): Promise<User> {
+        return this.updateAgentField(userId, 'type', data.type);
+    }
 
-        if (!user) {
-            throw new NotFoundException(`User with ID ${userId} not found`);
-        }
+    // Step 3: Location
+    async updateOnboardingStep3(userId: string, data: OnboardingStep3Dto): Promise<User> {
+        return this.updateAgentField(userId, 'operatingArea', data);
+    }
 
-        // Send Welcome Agent Email (Fire and Forget)
+    // Step 4: Payouts
+    async updateOnboardingStep4(userId: string, data: OnboardingStep4Dto): Promise<User> {
+        return this.updateAgentField(userId, 'bankDetails', data);
+    }
+
+    // Step 5: Identity Document (File Upload)
+    async updateOnboardingStep5(userId: string, file: Express.Multer.File, docType: string): Promise<User> {
+        if (!file) throw new BadRequestException('Identity document file is required');
+
+        const { url } = await this.uploadsService.uploadFile(file, 'shomwe/identity-docs');
+
+        const update = {
+            'agentProfile.identityDocumentUrl': url,
+            'agentProfile.identityDocumentType': docType,
+            'agentProfile.verificationStatus': 'pending'
+        };
+
+        const user = await this.userModel.findByIdAndUpdate(userId, { $set: update }, { new: true });
+        if (!user) throw new NotFoundException(`User ${userId} not found`);
+        return user;
+    }
+
+    // Step 6: Selfie & Finalize (File Upload + Role Upgrade)
+    async updateOnboardingStep6(userId: string, file: Express.Multer.File): Promise<User> {
+        if (!file) throw new BadRequestException('Selfie file is required');
+
+        const { url } = await this.uploadsService.uploadFile(file, 'shomwe/selfies');
+
+        // Finalize: Set Selfie, Status Pending, Role = AGENT
+        const update = {
+            'agentProfile.selfieUrl': url,
+            'role': UserRole.AGENT
+        };
+
+        const user = await this.userModel.findByIdAndUpdate(userId, { $set: update }, { new: true });
+        if (!user) throw new NotFoundException(`User ${userId} not found`);
+
+        // Send Welcome Email
         if (user.email && user.firstName) {
             this.emailService.sendAgentWelcomeEmail(user.email, user.firstName)
                 .catch(err => this.logger.error(`Failed to send agent welcome email: ${err.message}`));
         }
 
+        return user;
+    }
+
+    // Helper for updating agentProfile sub-document fields
+    private async updateAgentField(userId: string, field: string, value: any): Promise<User> {
+        const update = { [`agentProfile.${field}`]: value };
+        const user = await this.userModel.findByIdAndUpdate(userId, { $set: update }, { new: true });
+        if (!user) throw new NotFoundException(`User ${userId} not found`);
         return user;
     }
 }

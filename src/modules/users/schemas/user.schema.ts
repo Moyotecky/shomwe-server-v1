@@ -53,6 +53,9 @@ export class User extends BaseSchema {
             accountName: string;
         };
         verificationStatus?: 'pending' | 'verified' | 'rejected' | 'none';
+        identityDocumentUrl?: string;
+        identityDocumentType?: string; // NIN, Driver's License, Passport
+        selfieUrl?: string;
     };
 }
 

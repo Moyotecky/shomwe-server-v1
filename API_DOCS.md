@@ -10,6 +10,24 @@ The authentication flow consists of three steps:
 ### Base URL
 `http://localhost:3000/api/v1` (Default)
 
+## Response Format
+All successful responses are wrapped in a standard envelope:
+```json
+{
+  "statusCode": 200,
+  "message": "Success message",
+  "data": { ... } // Actual response data is here
+}
+```
+All errors follow this format:
+```json
+{
+  "statusCode": 4xx/5xx,
+  "message": "Error description",
+  "error": "Error Type"
+}
+```
+
 ---
 
 ### 1. Send OTP

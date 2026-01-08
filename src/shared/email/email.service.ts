@@ -26,80 +26,52 @@ export class EmailService {
     }
 
     async sendVerificationEmail(to: string, otp: string): Promise<boolean> {
-        try {
-            let html = this.getTemplate('otp-verification');
-            html = html.replace('{{OTP_CODE}}', otp);
-
-            const { data, error } = await this.resend.emails.send({
-                from: this.fromEmail,
-                to: [to],
-                subject: 'Your Shomwe verification code',
-                html: html,
-            });
-
-            if (error) {
-                this.logger.error(`Failed to send email to ${to}: ${error.message}`);
-                return false;
-            }
-
-            return true;
-        } catch (error) {
-            this.logger.error(`Failed to send verification email to ${to}`, error);
-            return false;
-        }
+        const html = this.getTemplate('otp-verification').replace('{{OTP_CODE}}', otp);
+        return this.sendWithRetry(to, 'Your Shomwe verification code', html);
     }
 
     async sendWelcomeEmail(to: string, firstName: string): Promise<boolean> {
-        try {
-            let html = this.getTemplate('welcome');
-            const ctaLink = `https://shomwe.com/dashboard/agent`; // TODO: Make dynamic or from config
+        const html = this.getTemplate('welcome')
+            .replace('{{first_name}}', firstName)
+            .replace('{{cta_link}}', 'https://shomwe.com/dashboard/agent');
 
-            html = html.replace('{{first_name}}', firstName);
-            html = html.replace('{{cta_link}}', ctaLink);
-
-            const { data, error } = await this.resend.emails.send({
-                from: this.fromEmail,
-                to: [to],
-                subject: 'Welcome to Showmwe 🎉',
-                html: html,
-            });
-
-            if (error) {
-                this.logger.error(`Failed to send email to ${to}: ${error.message}`);
-                return false;
-            }
-
-            return true;
-        } catch (error) {
-            this.logger.error(`Failed to send welcome email to ${to}`, error);
-            return false;
-        }
+        return this.sendWithRetry(to, 'Welcome to Showmwe 🎉', html);
     }
 
     async sendAgentWelcomeEmail(to: string, firstName: string): Promise<boolean> {
-        try {
-            let html = this.getTemplate('welcome-agent');
-            const ctaLink = `https://shomwe.com/dashboard/agent`;
+        const html = this.getTemplate('welcome-agent')
+            .replace('{{first_name}}', firstName)
+            .replace('{{cta_link}}', 'https://shomwe.com/dashboard/agent');
 
-            html = html.replace('{{first_name}}', firstName);
-            html = html.replace('{{cta_link}}', ctaLink);
+        return this.sendWithRetry(to, 'You are now a Shomwe Agent! 🚀', html);
+    }
 
-            const { data, error } = await this.resend.emails.send({
-                from: this.fromEmail,
-                to: [to],
-                subject: 'You are now a Shomwe Agent! 🚀',
-                html: html,
-            });
+    private async sendWithRetry(to: string, subject: string, html: string, retries = 3): Promise<boolean> {
+        for (let i = 0; i < retries; i++) {
+            try {
+                const { error } = await this.resend.emails.send({
+                    from: this.fromEmail,
+                    to: [to],
+                    subject,
+                    html,
+                });
 
-            if (error) {
-                this.logger.error(`Failed to send agent welcome email to ${to}: ${error.message}`);
-                return false;
+                if (error) {
+                    this.logger.warn(`Attempt ${i + 1} failed for ${to}: ${error.message}`);
+                    if (i === retries - 1) return false;
+                    await new Promise(res => setTimeout(res, 1000 * Math.pow(2, i))); // 1s, 2s, 4s
+                    continue;
+                }
+                return true;
+            } catch (err) {
+                this.logger.warn(`Attempt ${i + 1} exception for ${to}: ${err.message}`);
+                if (i === retries - 1) {
+                    this.logger.error(`Final failure sending email to ${to}`, err);
+                    return false;
+                }
+                await new Promise(res => setTimeout(res, 1000 * Math.pow(2, i)));
             }
-
-            return true;
-        } catch (error) {
-            this.logger.error(`Failed to send agent welcome email to ${to}`, error);
-            return false;
         }
+        return false;
     }
 }
