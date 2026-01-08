@@ -39,6 +39,21 @@ export class User extends BaseSchema {
     // For Agents
     @Prop({ default: false })
     isVerifiedAgent: boolean;
+
+    @Prop({ type: Object })
+    agentProfile?: {
+        type?: string;
+        operatingArea?: {
+            city: string;
+            neighborhood?: string;
+        };
+        bankDetails?: {
+            bankName: string;
+            accountNumber: string;
+            accountName: string;
+        };
+        verificationStatus?: 'pending' | 'verified' | 'rejected' | 'none';
+    };
 }
 
 export type UserDocument = User & Document;

@@ -11,7 +11,13 @@ export class EmailService {
     private readonly fromEmail = 'no-reply@jekana.com'; // TODO: Config in env for prod
 
     constructor(private configService: ConfigService) {
-        this.resend = new Resend(this.configService.get<string>('RESEND_API_KEY'));
+        const apiKey = this.configService.get<string>('RESEND_API_KEY');
+        if (!apiKey) {
+            this.logger.error('RESEND_API_KEY is not defined in the configuration!');
+        } else {
+            this.logger.log(`EmailService initialized with API Key: ${apiKey.substring(0, 4)}...`);
+        }
+        this.resend = new Resend(apiKey);
     }
 
     private getTemplate(templateName: string): string {
@@ -66,6 +72,33 @@ export class EmailService {
             return true;
         } catch (error) {
             this.logger.error(`Failed to send welcome email to ${to}`, error);
+            return false;
+        }
+    }
+
+    async sendAgentWelcomeEmail(to: string, firstName: string): Promise<boolean> {
+        try {
+            let html = this.getTemplate('welcome-agent');
+            const ctaLink = `https://shomwe.com/dashboard/agent`;
+
+            html = html.replace('{{first_name}}', firstName);
+            html = html.replace('{{cta_link}}', ctaLink);
+
+            const { data, error } = await this.resend.emails.send({
+                from: this.fromEmail,
+                to: [to],
+                subject: 'You are now a Shomwe Agent! 🚀',
+                html: html,
+            });
+
+            if (error) {
+                this.logger.error(`Failed to send agent welcome email to ${to}: ${error.message}`);
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            this.logger.error(`Failed to send agent welcome email to ${to}`, error);
             return false;
         }
     }
