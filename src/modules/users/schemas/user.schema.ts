@@ -15,7 +15,7 @@ export class User extends BaseSchema {
     @Prop()
     dob?: Date;
 
-    @Prop({ required: true, unique: true })
+    @Prop({ unique: true })
     email: string;
 
     @Prop({ select: false })
@@ -30,7 +30,7 @@ export class User extends BaseSchema {
     @Prop({ required: true, enum: UserRole, default: UserRole.GUEST })
     role: UserRole;
 
-    @Prop()
+    @Prop({ unique: true, sparse: true })
     phoneNumber?: string;
 
     @Prop()

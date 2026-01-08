@@ -2,7 +2,7 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { AuthGuard } from '@nestjs/passport';
-import { CurrentUser } from '../../core/decorators/current-user.decorator'; // Need to create
+import { CurrentUser } from '../../core/decorators/current-user.decorator';
 
 @Controller('users')
 export class UsersController {

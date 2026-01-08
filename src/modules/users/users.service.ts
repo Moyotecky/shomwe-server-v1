@@ -14,7 +14,11 @@ export class UsersService {
     }
 
     async findByEmail(email: string): Promise<User | null> {
-        return this.userModel.findOne({ email }).select('+password').exec();
+        return this.userModel.findOne({ email }).select('+password +otp +otpExpires').exec();
+    }
+
+    async findByPhone(phoneNumber: string): Promise<User | null> {
+        return this.userModel.findOne({ phoneNumber }).select('+otp +otpExpires').exec();
     }
 
     async findWithOtp(email: string): Promise<User | null> {
